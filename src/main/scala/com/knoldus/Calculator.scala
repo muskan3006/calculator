@@ -39,39 +39,71 @@ object Calculator {
     override def name: String = str
 
     override protected def execute(operands: Seq[Double]): Seq[Double] = {
-      Calculator.execute(this, operands).value match {
-        case Some(value) => value.get
-        case None => throw new CalculatorException
+      //      Calculator.execute(this, operands).value match {
+      //        case Some(value) => value.get
+      //        case None => throw new CalculatorException
+      //      }
+      this.name match {
+        case "+" => Seq(operands.sum)
+        case "-" => operands match {
+          case first :: second :: Nil => Seq(first - second)
+          case Nil => throw new CalculatorException
+        }
+        case "*" => Seq(operands.foldLeft(1.0)((res, elem) => elem * res))
+        case "/" => operands match {
+          case first :: second :: Nil => Seq(first / second)
+          case Nil => throw new CalculatorException
+        }
+        case "^" => Seq(math.pow(operands.head, operands.last))
+        case "sqrt" => Seq(math.sqrt(operands.head))
+        case "!" => Seq(factorial(operands.head))
+        case "sum" => Seq(operands.sum)
+        case "odd" => operands.filter(x => x % 2 == 1)
+        case "even" => operands.filter(x => x % 2 == 0)
+        case "gcd" => Seq(gcd(operands.head, operands.last))
+        case "fibonacci" => fibonacci(operands.head).reverse
+
       }
     }
   }
 
   def calculate(operator: String, operands: Seq[Double]): Future[Seq[Double]] = {
-    if (operator.validate(operands)) execute(operator, operands) else throw new CalculatorException
+    if (operator == "Find") {
+
+      Future {
+        operands.foldLeft(List.empty[Double]) {
+          (res, elem) =>
+            if ("!".validateAndExecute(Seq(elem)).head > "^".validateAndExecute(Seq(6, elem)).head) elem :: res
+            else res
+        }
+      }
+    } else if (operator == "3op") {
+      execute("fibonacci", operands).map(x => "even".validateAndExecute(x)).map(x => "sum".validateAndExecute(x))
+    } else if (operator == "(a+b)^2") {
+      val firstCalculation = calculate("+", execute("^", Seq(operands.head, 2)), execute("^", Seq(operands.last, 2)))
+      val secondCalculation = calculate("*", Seq(2.0), execute("*", operands))
+      calculate("+", firstCalculation, secondCalculation)
+    }
+    else
+      execute(operator, operands)
+  }
+
+  private def calculate(operator: String, leftCalculation: Future[Seq[Double]], rightCalculation: Future[Seq[Double]]): Future[Seq[Double]] = {
+    val futureResult = leftCalculation.flatMap(x => rightCalculation.map(y => x ++ y))
+    calculate(operator, futureResult)
+  }
+
+  private def calculate(operator: String, future: Future[Seq[Double]]): Future[Seq[Double]] = {
+    future.map(x => operator.validateAndExecute(x))
+  }
+
+  private def calculate(operator: String, rightOperands: Seq[Double], futureCalculation: Future[Seq[Double]]): Future[Seq[Double]] = {
+    val futureResult = futureCalculation.map(x => x ++ rightOperands)
+    calculate(operator, futureResult)
   }
 
   def execute(operator: Operator, operands: Seq[Double]): Future[Seq[Double]] = Future {
-    operator.name match {
-      case "+" => Seq(operands.sum)
-      case "-" => operands match {
-        case first :: second :: Nil => Seq(first - second)
-        case Nil => throw new CalculatorException
-      }
-      case "*" => Seq(operands.foldLeft(1.0)((res, elem) => elem * res))
-      case "/" => operands match {
-        case first :: second :: Nil => Seq(first / second)
-        case Nil => throw new CalculatorException
-      }
-      case "^" => Seq(math.pow(operands.head, operands.last))
-      case "sqrt" => Seq(math.sqrt(operands.head))
-      case "!" => Seq(factorial(operands.head))
-      case "sum" => Seq(operands.sum)
-      case "odd" => operands.filter(x => x % 2 == 1)
-      case "even" => operands.filter(x => x % 2 == 0)
-      case "gcd" => Seq(gcd(operands.head, operands.last))
-      case "fibonacci" => fibonacci(operands.head).reverse
-    }
-
+    operator.validateAndExecute(operands)
   }
 
   private def fibonacci(d: Double): Seq[Double] = {
@@ -89,30 +121,6 @@ object Calculator {
     case _ => fibAtPlace(n - 1) + fibAtPlace(n - 2)
   }
 
-  private def findmax(doubles: List[Double]) = {
-    def helper(max: Double, list: List[Double]): List[Double] = {
-      list match {
-        case first :: rest if first > max => helper(first, rest)
-        case first :: rest => helper(max, rest)
-        case Nil => list
-      }
-
-    }
-
-    helper(0.0, List.empty[Double])
-  }
-
-  private def findMultiple(d: Double): Seq[Double] = {
-    def helper(divisor: Int, multiples: List[Double]): List[Double] = {
-      if (d < divisor) multiples else {
-        if (d > divisor && d % divisor == 0) helper(divisor + 1, divisor :: multiples)
-        else helper(divisor + 1, multiples)
-      }
-    }
-
-    helper(1, List.empty[Double])
-  }
-
   private def factorial(x: Double) = {
     def helper(x: Int, prod: Int): Double = {
       if (x > 0) {
@@ -128,7 +136,8 @@ object Calculator {
 }
 
 object Main extends App {
-  val a = Calculator.calculate("gcd", Seq(12, 90))
+  val a = Calculator.calculate("(a+b)^2", Seq(354, 978))
+
   Thread.sleep(2000)
   println(a)
 }
